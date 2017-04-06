@@ -52,7 +52,25 @@ class RequestSignerSpec extends FlatSpec with Matchers {
         withFileContents(fileName = s"$filePath.creq") { expectedCanonical =>
           val request = parseRequest(requestStr)
           val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
+
           canonicalRequest shouldBe expectedCanonical
+        }
+      }
+
+    }
+
+
+    it should s"build the string to sign for $scenarioName" in {
+      val filePath = resolveFilePathForScenario(scenarioName)
+
+      withFileContents(fileName = s"$filePath.creq") { canonicalRequest =>
+        withFileContents(fileName = s"$filePath.sts") { expectedStringToSign =>
+          val stringToSign = RequestSigner.StringToSignBuilder.buildStringToSign(
+            region = "eu-west-1",
+            service = "execute-api",
+            canonicalRequest = canonicalRequest.mkString("\n"))
+
+          stringToSign shouldBe expectedStringToSign
         }
       }
 
