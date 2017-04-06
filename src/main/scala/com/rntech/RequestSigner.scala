@@ -3,6 +3,8 @@ package com.rntech
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.time.{ZoneId, ZoneOffset, ZonedDateTime}
+import java.time.format.DateTimeFormatter
 
 import org.apache.commons.codec.binary.Hex
 import org.apache.commons.lang3.StringUtils
@@ -42,6 +44,26 @@ object RequestSigner {
         canonicalSignedHeaders, hexEncodedPayloadHash)
 
       canonicalRequest.mkString("\n")
+    }
+  }
+
+  object StringToSignBuilder {
+    val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+
+    def buildStringToSign(region: String, service: String, canonicalRequest: String) = {
+
+      val requestDate = ZonedDateTime.now(ZoneOffset.UTC)
+      val credentialsScope = s"${requestDate.format(DateTimeFormatter.BASIC_ISO_DATE)}/$region/$service/aws4_request"
+
+      val hexEncodedCanonicalRequestHash = Hex.encodeHexString(sha256Hash(canonicalRequest.getBytes))
+      val stringToSign = Seq(
+        "AWS4-HMAC-SHA256",
+        requestDate.format(DATE_FORMATTER),
+        credentialsScope,
+        hexEncodedCanonicalRequestHash)
+        .mkString("\n")
+
+      stringToSign
     }
   }
 
