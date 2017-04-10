@@ -1,11 +1,10 @@
 package com.rntech
 
 
-import java.net.{URI, URL}
-import java.nio.file.Paths
+import java.time.ZonedDateTime
 
-import org.scalatest.FlatSpec
-import org.scalatest.Matchers
+import com.amazonaws.auth.BasicAWSCredentials
+import org.scalatest.{FlatSpec, Matchers}
 import org.scalatest.prop.TableDrivenPropertyChecks._
 
 import scala.io.Source
@@ -50,72 +49,68 @@ class RequestSignerSpec extends FlatSpec with Matchers {
     )
   forAll(scenerios) { (scenarioName: String) =>
 
-    it should s"build a valid canonical request for $scenarioName" in {
+    //    it should s"build a valid canonical request for $scenarioName" in {
+    //      val filePath = resolveFilePathForScenario(scenarioName)
+    //
+    //      withFileContents(fileName = s"$filePath.req") { requestStr =>
+    //        withFileContents(fileName = s"$filePath.creq") { expectedCanonical =>
+    //          val request = parseRequest(requestStr)
+    //          val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
+    //
+    //          println("-----------------------------")
+    //          println("-----------------------------")
+    //          println(canonicalRequest)
+    //          println("-----------------------------")
+    //          println("-----------------------------")
+    //          println(expectedCanonical.mkString("\n"))
+    //          println("-----------------------------")
+    //          println("-----------------------------")
+    //          canonicalRequest shouldBe expectedCanonical.mkString("\n")
+    //        }
+    //      }
+    //
+    //    }
+
+    it should s"build the string to sign for $scenarioName" in {
       val filePath = resolveFilePathForScenario(scenarioName)
 
-      withFileContents(fileName = s"$filePath.req") { requestStr =>
-        withFileContents(fileName = s"$filePath.creq") { expectedCanonical =>
-          val request = parseRequest(requestStr)
-          val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
+      withFileContents(fileName = s"$filePath.creq") { canonicalRequest =>
+        withFileContents(fileName = s"$filePath.sts") { expectedStringToSign =>
 
-          println("-----------------------------")
-          println("-----------------------------")
-          println(canonicalRequest)
-          println("-----------------------------")
-          println("-----------------------------")
-          println(expectedCanonical.mkString("\n"))
-          println("-----------------------------")
-          println("-----------------------------")
-          canonicalRequest shouldBe expectedCanonical.mkString("\n")
+          val stringToSign = RequestSigner.StringToSignBuilder.buildStringToSign(
+            region = "us-east-1",
+            service = "service",
+            canonicalRequest = canonicalRequest.mkString("\n"),
+            requestDate = ZonedDateTime.parse("2015-08-30T12:36:00Z[UTC]"))
+
+          stringToSign shouldBe expectedStringToSign.mkString("\n")
         }
       }
-
     }
 
-    //    it should s"build the string to sign for $scenarioName" in {
-    //      val filePath = resolveFilePathForScenario(scenarioName)
-    //
-    //      withFileContents(fileName = s"$filePath.creq") { canonicalRequest =>
-    //        withFileContents(fileName = s"$filePath.sts") { expectedStringToSign =>
-    //          val stringToSign = RequestSigner.StringToSignBuilder.buildStringToSign(
-    //            region = "us-east-1",
-    //            service = "execute-api",
-    //            canonicalRequest = canonicalRequest.mkString("\n"),
-    //            requestDate = ZonedDateTime.now())
-    //
-    //          stringToSign shouldBe expectedStringToSign
-    //        }
-    //      }
-    //
-    //    }
-    //
-    //
-    //    it should s"calculate the signature for $scenarioName" in {
-    //      val filePath = resolveFilePathForScenario(scenarioName)
-    //      withFileContents(fileName = s"$filePath.req") { requestStr =>
-    //        withFileContents(fileName = s"$filePath.sts") { stringToSign =>
-    //          withFileContents(fileName = s"$filePath.authz") { expectedSignature =>
-    //            val now = ZonedDateTime.now()
-    //            val credentials = new BasicAWSCredentials("AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY")
-    //
-    //            val requestHeaders = parseRequest(requestStr).headers
-    //            //todo
-    //            //AKIDEXAMPLE/20150830/us-east-1/service/aws4_request
-    //
-    //            val signature = RequestSigner.StringSigner.signStringWithS4(
-    //              stringToSign = stringToSign.mkString,
-    //              requestDate = now,
-    //              credentials = credentials,
-    //              service = "service",
-    //              region = "us-east-1",
-    //              headers = requestHeaders)
-    //
-    //
-    //            signature shouldBe expectedSignature
-    //          }
-    //        }
-    //      }
-    //    }
+
+    it should s"calculate the signature for $scenarioName" in {
+      val filePath = resolveFilePathForScenario(scenarioName)
+      withFileContents(fileName = s"$filePath.req") { requestStr =>
+        withFileContents(fileName = s"$filePath.sts") { stringToSign =>
+          withFileContents(fileName = s"$filePath.authz") { expectedSignature =>
+
+            val credentials = new BasicAWSCredentials("AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY")
+            val requestHeaders = parseRequest(requestStr).headers
+
+            val signature = RequestSigner.StringSigner.signStringWithS4(
+              stringToSign = stringToSign.mkString("\n"),
+              requestDate = ZonedDateTime.parse("2015-08-30T12:36:00Z[UTC]"),
+              credentials = credentials,
+              service = "service",
+              region = "us-east-1",
+              headers = requestHeaders)
+
+            signature shouldBe expectedSignature.mkString("\n")
+          }
+        }
+      }
+    }
   }
 
   def resolveFilePathForScenario(scenario: String) = {
@@ -155,15 +150,21 @@ class RequestSignerSpec extends FlatSpec with Matchers {
   }
 
   def parseAndGroupHeaders(headerLines: List[String]) = {
-    headerLines.map { header =>
-      header.split(":") match {
-        case Array(key, value) => (key, value)
+
+    case class ParseHeaders(headers: Map[String, String], lastKey: Option[String] = None)
+    headerLines.foldLeft(ParseHeaders(headers = Map.empty[String, String], lastKey = None)) { (acc, line) =>
+      line.split(":") match {
+        case Array(key, value) => acc.copy(acc.headers + (key -> value), Some(key))
+        case Array(value) if acc.lastKey.isDefined =>
+          val body = acc.headers(acc.lastKey.get) + s"\n$value"
+          acc.copy(headers = acc.headers + (acc.lastKey.get -> body))
       }
-    }.foldLeft(Map.empty[String, List[String]]) { (acc, header) =>
-      val (headerKey, headerValue) = header
-      val currentValues = acc.getOrElse(headerKey, default = List.empty[String])
-      acc + (headerKey -> (currentValues :+ headerValue)) //groups multiple headers (of same type) into single entry
-    } map {
+    }.headers.toSeq
+      .foldLeft(Map.empty[String, List[String]]) { (acc, header) =>
+        val (headerKey, headerValue) = header
+        val currentValues = acc.getOrElse(headerKey, default = List.empty[String])
+        acc + (headerKey -> (currentValues :+ headerValue)) //groups multiple headers (of same type) into single entry
+      } map {
       case (key, values) => Header(key, values)
     } toSeq
   }
@@ -181,14 +182,4 @@ class RequestSignerSpec extends FlatSpec with Matchers {
       body(stream.getLines().toList)
     }
   }
-}
-
-
-object mytest extends App {
-  println("wtf")
-//  Path("lol")
-  val baseUri = new URI("//").normalize()
-  println(baseUri.getPath)
-
-
 }

@@ -24,6 +24,9 @@ case class Request(headers: Seq[Header],
 
 object RequestSigner {
 
+  val DATE_FORMATTER_DATE_ONLY = DateTimeFormatter.ofPattern("yyyyMMdd")
+
+
   object CanonicalRequestBuilder {
     private val emptyBody = "".getBytes(StandardCharsets.UTF_8)
 
@@ -64,7 +67,7 @@ object RequestSigner {
 
     def buildStringToSign(region: String, service: String, canonicalRequest: String, requestDate: ZonedDateTime) = {
 
-      val credentialsScope = s"${requestDate.format(DateTimeFormatter.BASIC_ISO_DATE)}/$region/$service/aws4_request"
+      val credentialsScope = s"${requestDate.format(DATE_FORMATTER_DATE_ONLY)}/$region/$service/aws4_request"
 
       val hexEncodedCanonicalRequestHash = Hex.encodeHexString(sha256Hash(canonicalRequest.getBytes))
       val stringToSign = Seq(
@@ -85,7 +88,7 @@ object RequestSigner {
                          service: String,
                          region: String,
                          headers: Seq[Header]) = {
-      val credentialsScope = s"${requestDate.format(DateTimeFormatter.BASIC_ISO_DATE)}/$region/$service/aws4_request"
+      val credentialsScope = s"${requestDate.format(DATE_FORMATTER_DATE_ONLY)}/$region/$service/aws4_request"
       val canonicalSignedHeaders = headers.sortBy(_.key).map(e => e.key.toLowerCase).mkString(";")
       val signature = encryptWithHmac256(stringToSign, requestDate, credentials, region, service)
       s"AWS4-HMAC-SHA256 Credential=${credentials.getAWSAccessKeyId}/$credentialsScope, SignedHeaders=$canonicalSignedHeaders, Signature=$signature"
@@ -107,7 +110,7 @@ object RequestSigner {
       def getSignatureKey(now: ZonedDateTime, credentials: AWSCredentials): Array[Byte] = {
         val kSecret = s"AWS4${credentials.getAWSSecretKey}".getBytes(StandardCharsets.UTF_8)
 
-        Seq(now.format(DateTimeFormatter.BASIC_ISO_DATE), region, service, "aws4_request").foldLeft(kSecret) {
+        Seq(now.format(DATE_FORMATTER_DATE_ONLY), region, service, "aws4_request").foldLeft(kSecret) {
           (acc, value) => encrypt(value, acc)
         }
       }
