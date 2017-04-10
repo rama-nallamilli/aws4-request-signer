@@ -1,11 +1,9 @@
 package com.rntech
 
-import java.net.URI
-import java.time.ZonedDateTime
 
-import com.amazonaws.auth.{AWSCredentials, BasicAWSCredentials}
-import com.netaporter.uri.QueryString
-import org.asynchttpclient.util.HttpUtils
+import java.net.{URI, URL}
+import java.nio.file.Paths
+
 import org.scalatest.FlatSpec
 import org.scalatest.Matchers
 import org.scalatest.prop.TableDrivenPropertyChecks._
@@ -129,8 +127,13 @@ class RequestSignerSpec extends FlatSpec with Matchers {
   }
 
   def parseRequest(requestStr: List[String]) = {
-    val firstLine = requestStr.head.split(" ")
-    val (method, uri) = (firstLine(0), firstLine(1))
+
+    val method = requestStr.head.split(" ")(0)
+    val uri = requestStr.head
+      .stripPrefix("GET ")
+      .stripPrefix("POST ")
+      .stripSuffix(" HTTP/1.1")
+
     val headers = parseAndGroupHeaders(requestStr.tail)
 
     import com.netaporter.uri.Uri.parseQuery
@@ -181,3 +184,11 @@ class RequestSignerSpec extends FlatSpec with Matchers {
 }
 
 
+object mytest extends App {
+  println("wtf")
+//  Path("lol")
+  val baseUri = new URI("//").normalize()
+  println(baseUri.getPath)
+
+
+}

@@ -1,6 +1,6 @@
 package com.rntech
 
-import java.net.URLEncoder
+import java.net.{URI, URLEncoder}
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.format.DateTimeFormatter
@@ -33,7 +33,7 @@ object RequestSigner {
     def buildCanonicalRequest(request: Request): String = {
 
       val canonicalQueryParams = request.queryParameters.sortBy(_.name).map {
-        case QueryParam(name, value) => s"${urlEncode(name)}=${urlEncode(value)}"
+        case QueryParam(name, value) => s"${specialUrlEncode(name)}=${specialUrlEncode(value)}"
       }.mkString("&")
 
       val sortedHeaders = request.headers.sortBy(_.key)
@@ -43,15 +43,19 @@ object RequestSigner {
       val bodyBytes = request.body.map(_.getBytes).getOrElse(emptyBody)
       val hexEncodedPayloadHash = Hex.encodeHexString(sha256Hash(bodyBytes))
 
-      val strippedUri = request.uriPath match {
-        case uri if uri.startsWith("/") => uri.tail
-        case _@uri => uri
-      }
+      val normalisedPath = new URI(request.uriPath).normalize().getPath
 
-      val canonicalRequest = Seq(request.method, s"/${urlEncode(strippedUri)}", canonicalQueryParams, canonicalHeaders, "",
+      val canonicalRequest = Seq(request.method, s"/${specialUrlEncode(normalisedPath.stripPrefix("/"))}", canonicalQueryParams, canonicalHeaders, "",
         canonicalSignedHeaders, hexEncodedPayloadHash)
 
       canonicalRequest.mkString("\n")
+    }
+
+    private def specialUrlEncode(str: String) = {
+      urlEncode(str)
+        .replace("+", "%20")
+        .replace("*", "%2A")
+        .replace("%7E", "~")
     }
   }
 
