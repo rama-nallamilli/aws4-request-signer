@@ -49,27 +49,27 @@ class RequestSignerSpec extends FlatSpec with Matchers {
     )
   forAll(scenerios) { (scenarioName: String) =>
 
-    //    it should s"build a valid canonical request for $scenarioName" in {
-    //      val filePath = resolveFilePathForScenario(scenarioName)
-    //
-    //      withFileContents(fileName = s"$filePath.req") { requestStr =>
-    //        withFileContents(fileName = s"$filePath.creq") { expectedCanonical =>
-    //          val request = parseRequest(requestStr)
-    //          val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
-    //
-    //          println("-----------------------------")
-    //          println("-----------------------------")
-    //          println(canonicalRequest)
-    //          println("-----------------------------")
-    //          println("-----------------------------")
-    //          println(expectedCanonical.mkString("\n"))
-    //          println("-----------------------------")
-    //          println("-----------------------------")
-    //          canonicalRequest shouldBe expectedCanonical.mkString("\n")
-    //        }
-    //      }
-    //
-    //    }
+        it should s"build a valid canonical request for $scenarioName" in {
+          val filePath = resolveFilePathForScenario(scenarioName)
+
+          withFileContents(fileName = s"$filePath.req") { requestStr =>
+            withFileContents(fileName = s"$filePath.creq") { expectedCanonical =>
+              val request = parseRequest(requestStr)
+              val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
+
+              println("-----------------------------")
+              println("-----------------------------")
+              println(canonicalRequest)
+              println("-----------------------------")
+              println("-----------------------------")
+              println(expectedCanonical.mkString("\n"))
+              println("-----------------------------")
+              println("-----------------------------")
+              canonicalRequest shouldBe expectedCanonical.mkString("\n")
+            }
+          }
+
+        }
 
     it should s"build the string to sign for $scenarioName" in {
       val filePath = resolveFilePathForScenario(scenarioName)
@@ -149,25 +149,30 @@ class RequestSignerSpec extends FlatSpec with Matchers {
     request
   }
 
-  def parseAndGroupHeaders(headerLines: List[String]) = {
+  def parseAndGroupHeaders(headerLines: List[String]): Seq[Header] = {
 
-    case class ParseHeaders(headers: Map[String, String], lastKey: Option[String] = None)
-    headerLines.foldLeft(ParseHeaders(headers = Map.empty[String, String], lastKey = None)) { (acc, line) =>
-      line.split(":") match {
-        case Array(key, value) => acc.copy(acc.headers + (key -> value), Some(key))
-        case Array(value) if acc.lastKey.isDefined =>
-          val body = acc.headers(acc.lastKey.get) + s"\n$value"
-          acc.copy(headers = acc.headers + (acc.lastKey.get -> body))
+    def addHeaderValue(parseHeaders: ParseHeaders, key: String, value: String): ParseHeaders = {
+      if(parseHeaders.headers.contains(key)) {
+        val updatedHeaderValue = (key -> (parseHeaders.headers(key) :+ value))
+        parseHeaders.copy(headers = parseHeaders.headers + updatedHeaderValue, Some(key))
+      } else {
+        parseHeaders.copy(headers = parseHeaders.headers + (key -> Seq(value)), Some(key))
       }
-    }.headers.toSeq
-      .foldLeft(Map.empty[String, List[String]]) { (acc, header) =>
-        val (headerKey, headerValue) = header
-        val currentValues = acc.getOrElse(headerKey, default = List.empty[String])
-        acc + (headerKey -> (currentValues :+ headerValue)) //groups multiple headers (of same type) into single entry
+    }
+
+    case class ParseHeaders(headers: Map[String, Seq[String]], lastKey: Option[String] = None)
+    headerLines.foldLeft(ParseHeaders(headers = Map.empty[String, Seq[String]], lastKey = None)) { (acc, line) =>
+      line.split(":") match {
+        case Array(key, value) => addHeaderValue(acc, key, value)
+        case Array(value) if acc.lastKey.isDefined =>
+          val body = acc.headers(acc.lastKey.get).head + s"\n$value"
+          acc.copy(headers = acc.headers + (acc.lastKey.get -> Seq(body)))
+      }
+    }.headers
       } map {
-      case (key, values) => Header(key, values)
+      case (key, values) => Header(key, values.toList)
     } toSeq
-  }
+
 
 
   def using[A, B <: {def close() : Unit}](closeable: B)(f: B => A): A =
