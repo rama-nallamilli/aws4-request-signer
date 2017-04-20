@@ -11,7 +11,6 @@ import scala.io.Source
 
 class RequestSignerSpec extends FlatSpec with Matchers {
 
-  //TODO THE TESTS ARE NOT RUNNING, WTF
   val scenerios =
     Table(
       "scenario",
@@ -49,27 +48,27 @@ class RequestSignerSpec extends FlatSpec with Matchers {
     )
   forAll(scenerios) { (scenarioName: String) =>
 
-        it should s"build a valid canonical request for $scenarioName" in {
-          val filePath = resolveFilePathForScenario(scenarioName)
+    it should s"build a valid canonical request for $scenarioName" in {
+      val filePath = resolveFilePathForScenario(scenarioName)
 
-          withFileContents(fileName = s"$filePath.req") { requestStr =>
-            withFileContents(fileName = s"$filePath.creq") { expectedCanonical =>
-              val request = parseRequest(requestStr)
-              val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
+      withFileContents(fileName = s"$filePath.req") { requestStr =>
+        withFileContents(fileName = s"$filePath.creq") { expectedCanonical =>
+          val request = parseRequest(requestStr)
+          val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
 
-              println("-----------------------------")
-              println("-----------------------------")
-              println(canonicalRequest)
-              println("-----------------------------")
-              println("-----------------------------")
-              println(expectedCanonical.mkString("\n"))
-              println("-----------------------------")
-              println("-----------------------------")
-              canonicalRequest shouldBe expectedCanonical.mkString("\n")
-            }
-          }
-
+          println("-----------------------------")
+          println("-----------------------------")
+          println(canonicalRequest)
+          println("-----------------------------")
+          println("-----------------------------")
+          println(expectedCanonical.mkString("\n"))
+          println("-----------------------------")
+          println("-----------------------------")
+          canonicalRequest shouldBe expectedCanonical.mkString("\n")
         }
+      }
+
+    }
 
     it should s"build the string to sign for $scenarioName" in {
       val filePath = resolveFilePathForScenario(scenarioName)
@@ -152,8 +151,8 @@ class RequestSignerSpec extends FlatSpec with Matchers {
   def parseAndGroupHeaders(headerLines: List[String]): Seq[Header] = {
 
     def addHeaderValue(parseHeaders: ParseHeaders, key: String, value: String): ParseHeaders = {
-      if(parseHeaders.headers.contains(key)) {
-        val updatedHeaderValue = (key -> (parseHeaders.headers(key) :+ value))
+      if (parseHeaders.headers.contains(key)) {
+        val updatedHeaderValue = key -> (parseHeaders.headers(key) :+ value)
         parseHeaders.copy(headers = parseHeaders.headers + updatedHeaderValue, Some(key))
       } else {
         parseHeaders.copy(headers = parseHeaders.headers + (key -> Seq(value)), Some(key))
@@ -169,10 +168,9 @@ class RequestSignerSpec extends FlatSpec with Matchers {
           acc.copy(headers = acc.headers + (acc.lastKey.get -> Seq(body)))
       }
     }.headers
-      } map {
-      case (key, values) => Header(key, values.toList)
-    } toSeq
-
+  } map {
+    case (key, values) => Header(key, values.toList)
+  } toSeq
 
 
   def using[A, B <: {def close() : Unit}](closeable: B)(f: B => A): A =

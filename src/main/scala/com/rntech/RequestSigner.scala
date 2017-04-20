@@ -30,8 +30,10 @@ object RequestSigner {
   object CanonicalRequestBuilder {
     private val emptyBody = "".getBytes(StandardCharsets.UTF_8)
 
-    private val headerToCanonicalString = (header: Header) =>
-      s"${header.key.toLowerCase}:${StringUtils.normalizeSpace(header.values.mkString(","))}"
+    private val headerToCanonicalString = (header: Header) => {
+      val headerValues = header.values.map(headerValue => headerValue.split("\n").map(StringUtils.normalizeSpace).mkString(","))
+      s"${header.key.toLowerCase}:${headerValues.mkString(",")}"
+    }
 
     def buildCanonicalRequest(request: Request): String = {
 
