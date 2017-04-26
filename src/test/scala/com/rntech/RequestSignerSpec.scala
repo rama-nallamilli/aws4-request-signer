@@ -139,8 +139,7 @@ class RequestSignerSpec extends FlatSpec with Matchers {
     }
 
     val uriWithoutQueryParams = uri.split("\\?") match {
-      case Array(path, query) => path
-      case Array(path) => path
+      case Array(path, _*) => path
     }
 
     val request = Request(headers, None, method, uriWithoutQueryParams, queryParams)

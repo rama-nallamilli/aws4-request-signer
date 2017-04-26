@@ -9,6 +9,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 import com.amazonaws.auth.AWSCredentials
+import com.amazonaws.util.SdkHttpUtils
 import org.apache.commons.codec.binary.Hex
 import org.apache.commons.lang3.StringUtils
 
@@ -48,9 +49,10 @@ object RequestSigner {
       val bodyBytes = request.body.map(_.getBytes).getOrElse(emptyBody)
       val hexEncodedPayloadHash = Hex.encodeHexString(sha256Hash(bodyBytes))
 
-      val normalisedPath = new URI(request.uriPath).normalize().getPath
+      //todo remove localhost
+      val normalizedPath = new URI("http://localhost:8080" + SdkHttpUtils.urlEncode(request.uriPath, true)).normalize().getPath
 
-      val canonicalRequest = Seq(request.method, s"/${specialUrlEncode(normalisedPath.stripPrefix("/"))}", canonicalQueryParams, canonicalHeaders, "",
+      val canonicalRequest = Seq(request.method, normalizedPath, canonicalQueryParams, canonicalHeaders, "",
         canonicalSignedHeaders, hexEncodedPayloadHash)
 
       canonicalRequest.mkString("\n")
