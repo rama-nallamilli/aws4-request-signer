@@ -3,13 +3,12 @@ package com.rntech
 import java.net.{URI, URLEncoder}
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.time.format.DateTimeFormatter
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 import com.amazonaws.auth.AWSCredentials
-import com.amazonaws.util.SdkHttpUtils
 import org.apache.commons.codec.binary.Hex
 import org.apache.commons.lang3.StringUtils
 
@@ -20,8 +19,10 @@ case class QueryParam(name: String, value: String)
 case class Request(headers: Seq[Header],
                    body: Option[String],
                    method: String,
-                   uriPath: String,
-                   queryParameters: Seq[QueryParam] = Seq.empty[QueryParam])
+                   private val uriPath: String,
+                   queryParameters: Seq[QueryParam] = Seq.empty[QueryParam]) {
+  val cleanedUriPath = uriPath.replaceFirst("""^//""", "/")
+}
 
 object RequestSigner {
 
@@ -49,8 +50,7 @@ object RequestSigner {
       val bodyBytes = request.body.map(_.getBytes).getOrElse(emptyBody)
       val hexEncodedPayloadHash = Hex.encodeHexString(sha256Hash(bodyBytes))
 
-      //todo remove localhost
-      val normalizedPath = new URI("http://localhost:8080" + SdkHttpUtils.urlEncode(request.uriPath, true)).normalize().getPath
+      val normalizedPath = new URI(null, null, request.cleanedUriPath, null).normalize().toASCIIString
 
       val canonicalRequest = Seq(request.method, normalizedPath, canonicalQueryParams, canonicalHeaders, "",
         canonicalSignedHeaders, hexEncodedPayloadHash)

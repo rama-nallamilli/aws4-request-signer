@@ -4,8 +4,8 @@ package com.rntech
 import java.time.ZonedDateTime
 
 import com.amazonaws.auth.BasicAWSCredentials
-import org.scalatest.{FlatSpec, Matchers}
 import org.scalatest.prop.TableDrivenPropertyChecks._
+import org.scalatest.{FlatSpec, Matchers}
 
 import scala.io.Source
 
@@ -122,32 +122,40 @@ class RequestSignerSpec extends FlatSpec with Matchers {
 
   def parseRequest(requestStr: List[String]) = {
 
-    val method = requestStr.head.split(" ")(0)
-    val uri = requestStr.head
-      .stripPrefix("GET ")
-      .stripPrefix("POST ")
-      .stripSuffix(" HTTP/1.1")
+    val statusLineRegex = """(GET|POST|PUT|DELETE)\s(.*?)\sHTTP.*""".r
+    statusLineRegex.findFirstMatchIn(requestStr.head).map { m => (m.group(1), m.group(2)) }
+      .map { case (method, uri) =>
+        val (headers, body) = parseAndGroupHeadersAndBody(requestStr.tail)
+        val (uriWithoutQueryParams, queryString) = uri.split("\\?", 2).toList match {
+          case path :: Nil => (path, "")
+          case path :: qs => (path, qs.head)
+          case Nil => throw new Exception("Invalid request status line")
+        }
+        val queryParams = findQueryParams(queryString.split("\\s", 2).head, Seq.empty)
+        val request = Request(headers, body, method, uriWithoutQueryParams, queryParams)
+        println(request)
+        request
+      }.getOrElse(throw new Exception(s"Cannot parse request: ${requestStr.head}"))
 
-    val headers = parseAndGroupHeaders(requestStr.tail)
-
-    import com.netaporter.uri.Uri.parseQuery
-    val queryParams = uri.split("\\?") match {
-      case Array(_, query) => parseQuery(query).params.map {
-        case (k, v) => QueryParam(k, v.getOrElse(""))
-      }
-      case _ => Seq.empty[QueryParam]
-    }
-
-    val uriWithoutQueryParams = uri.split("\\?") match {
-      case Array(path, _*) => path
-    }
-
-    val request = Request(headers, None, method, uriWithoutQueryParams, queryParams)
-    println(request)
-    request
   }
 
-  def parseAndGroupHeaders(headerLines: List[String]): Seq[Header] = {
+  def findQueryParams(queryString: String, params: Seq[QueryParam]): Seq[QueryParam] = {
+    queryString.split("=", 2) match {
+      case Array(k, rest) => {
+        rest.split("&", 2) match {
+          case Array(v, next) => {
+            findQueryParams(next, params :+ QueryParam(k, v))
+          }
+          case _ => params :+ QueryParam(k, rest)
+        }
+      }
+      case Array(k) if !k.isEmpty => params :+ QueryParam(k, "")
+      case _ => params
+    }
+  }
+
+
+  def parseAndGroupHeadersAndBody(payload: List[String]): (Seq[Header], Option[String]) = {
 
     def addHeaderValue(parseHeaders: ParseHeaders, key: String, value: String): ParseHeaders = {
       if (parseHeaders.headers.contains(key)) {
@@ -159,7 +167,9 @@ class RequestSignerSpec extends FlatSpec with Matchers {
     }
 
     case class ParseHeaders(headers: Map[String, Seq[String]], lastKey: Option[String] = None)
-    headerLines.foldLeft(ParseHeaders(headers = Map.empty[String, Seq[String]], lastKey = None)) { (acc, line) =>
+
+    val (headerLines, bodyLines) = payload.span { line => line != "" }
+    val headers = headerLines.foldLeft(ParseHeaders(headers = Map.empty[String, Seq[String]], lastKey = None)) { (acc, line) =>
       line.split(":") match {
         case Array(key, value) => addHeaderValue(acc, key, value)
         case Array(value) if acc.lastKey.isDefined =>
@@ -167,9 +177,16 @@ class RequestSignerSpec extends FlatSpec with Matchers {
           acc.copy(headers = acc.headers + (acc.lastKey.get -> Seq(body)))
       }
     }.headers
-  } map {
-    case (key, values) => Header(key, values.toList)
-  } toSeq
+      .map {
+        case (key, values) => Header(key, values.toList)
+      }.toSeq
+
+    val body = bodyLines.filter(_ != "") match {
+      case Nil => None
+      case lines => Some(lines.mkString("\n"))
+    }
+    (headers, body)
+  }
 
 
   def using[A, B <: {def close() : Unit}](closeable: B)(f: B => A): A =
