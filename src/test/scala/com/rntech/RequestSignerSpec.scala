@@ -46,6 +46,9 @@ class RequestSignerSpec extends FlatSpec with Matchers {
       "post-x-www-form-urlencoded",
       "post-x-www-form-urlencoded-parameters"
     )
+
+  val credentials = new BasicAWSCredentials("AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY")
+
   forAll(scenerios) { (scenarioName: String) =>
 
     it should s"build a valid canonical request for $scenarioName" in {
@@ -56,14 +59,6 @@ class RequestSignerSpec extends FlatSpec with Matchers {
           val request = parseRequest(requestStr)
           val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
 
-          println("-----------------------------")
-          println("-----------------------------")
-          println(canonicalRequest)
-          println("-----------------------------")
-          println("-----------------------------")
-          println(expectedCanonical.mkString("\n"))
-          println("-----------------------------")
-          println("-----------------------------")
           canonicalRequest shouldBe expectedCanonical.mkString("\n")
         }
       }
@@ -94,7 +89,6 @@ class RequestSignerSpec extends FlatSpec with Matchers {
         withFileContents(fileName = s"$filePath.sts") { stringToSign =>
           withFileContents(fileName = s"$filePath.authz") { expectedSignature =>
 
-            val credentials = new BasicAWSCredentials("AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY")
             val requestHeaders = parseRequest(requestStr).headers
 
             val signature = RequestSigner.StringSigner.signStringWithS4(
@@ -107,6 +101,36 @@ class RequestSignerSpec extends FlatSpec with Matchers {
 
             signature shouldBe expectedSignature.mkString("\n")
           }
+        }
+      }
+    }
+
+    it should s"create the signed request for $scenarioName" in {
+      val filePath = resolveFilePathForScenario(scenarioName)
+      withFileContents(fileName = s"$filePath.req") { requestStr =>
+        withFileContents(fileName = s"$filePath.sreq") { expectedSignedRequest =>
+
+          val requestDate = "2015-08-30T12:36:00Z[UTC]"
+          val request = parseRequest(requestStr)
+
+          val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
+
+          val stringToSign = RequestSigner.StringToSignBuilder.buildStringToSign(
+            region = "us-east-1",
+            service = "service",
+            canonicalRequest = canonicalRequest,
+            requestDate = ZonedDateTime.parse(requestDate))
+
+          val authHeader = RequestSigner.StringSigner.signStringWithS4(
+            stringToSign = stringToSign,
+            requestDate = ZonedDateTime.parse(requestDate),
+            credentials = credentials,
+            service = "service",
+            region = "us-east-1",
+            headers = request.headers)
+
+          val signedRequest = requestStr.mkString("\n") + s"\nAuthorization: $authHeader"
+          signedRequest shouldBe expectedSignedRequest.mkString("\n")
         }
       }
     }
