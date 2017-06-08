@@ -8,9 +8,11 @@ import java.time.format.DateTimeFormatter
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-import com.amazonaws.auth.AWSCredentials
+import com.amazonaws.auth.{AWSCredentials, AWSSessionCredentials}
 import org.apache.commons.codec.binary.Hex
 import org.apache.commons.lang3.StringUtils
+
+case class AWSSignature(xAmzSecurityToken: Option[String], xAmzDate: String, authorisationSignature: String)
 
 case class Header(key: String, values: List[String])
 
@@ -26,6 +28,28 @@ case class Request(headers: Seq[Header],
 
 object RequestSigner {
 
+  def sign(request: Request, requestDate: ZonedDateTime,
+           credentials: AWSCredentials, region:String, service: String): AWSSignature = {
+    val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
+
+    val stringToSign = RequestSigner.StringToSignBuilder.buildStringToSign(
+      region = "us-east-1",
+      service = "service",
+      canonicalRequest = canonicalRequest,
+      requestDate = requestDate)
+
+    RequestSigner.StringSigner.buildAwsSignature(
+      stringToSign = stringToSign,
+      requestDate = requestDate,
+      credentials = credentials,
+      service = "service",
+      region = "us-east-1",
+      headers = request.headers)
+  }
+
+
+  val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+
   val DATE_FORMATTER_DATE_ONLY = DateTimeFormatter.ofPattern("yyyyMMdd")
 
 
@@ -38,6 +62,8 @@ object RequestSigner {
     }
 
     def buildCanonicalRequest(request: Request): String = {
+      if(!request.headers.exists(_.key.toLowerCase == "host"))
+        throw new IllegalArgumentException(s"Could not build canonical request, 'Host' header required, request=$request")
 
       val canonicalQueryParams = request.queryParameters.sortBy(_.name).map {
         case QueryParam(name, value) => s"${specialUrlEncode(name)}=${specialUrlEncode(value)}"
@@ -67,7 +93,6 @@ object RequestSigner {
   }
 
   object StringToSignBuilder {
-    val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
 
     def buildStringToSign(region: String, service: String, canonicalRequest: String, requestDate: ZonedDateTime) = {
 
@@ -86,16 +111,25 @@ object RequestSigner {
   }
 
   object StringSigner {
-    def signStringWithS4(stringToSign: String,
-                         requestDate: ZonedDateTime,
-                         credentials: AWSCredentials,
-                         service: String,
-                         region: String,
-                         headers: Seq[Header]) = {
+    def buildAwsSignature(stringToSign: String,
+                          requestDate: ZonedDateTime,
+                          credentials: AWSCredentials,
+                          service: String,
+                          region: String,
+                          headers: Seq[Header]): AWSSignature = {
       val credentialsScope = s"${requestDate.format(DATE_FORMATTER_DATE_ONLY)}/$region/$service/aws4_request"
       val canonicalSignedHeaders = headers.sortBy(_.key).map(e => e.key.toLowerCase).mkString(";")
       val signature = encryptWithHmac256(stringToSign, requestDate, credentials, region, service)
-      s"AWS4-HMAC-SHA256 Credential=${credentials.getAWSAccessKeyId}/$credentialsScope, SignedHeaders=$canonicalSignedHeaders, Signature=$signature"
+      val authSignature = s"AWS4-HMAC-SHA256 Credential=${credentials.getAWSAccessKeyId}/$credentialsScope, SignedHeaders=$canonicalSignedHeaders, Signature=$signature"
+
+      val securityToken = credentials match {
+        case creds: AWSSessionCredentials => Some(creds.getSessionToken)
+        case _ => None
+      }
+
+      AWSSignature(xAmzSecurityToken = securityToken,
+        xAmzDate = requestDate.format(DATE_FORMATTER),
+        authorisationSignature = authSignature)
     }
 
     private def encryptWithHmac256(stringToSign: String,

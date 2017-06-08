@@ -3,7 +3,7 @@ package com.rntech
 
 import java.time.ZonedDateTime
 
-import com.amazonaws.auth.BasicAWSCredentials
+import com.amazonaws.auth.{BasicAWSCredentials, BasicSessionCredentials}
 import org.scalatest.prop.TableDrivenPropertyChecks._
 import org.scalatest.{FlatSpec, Matchers}
 
@@ -49,6 +49,12 @@ class RequestSignerSpec extends FlatSpec with Matchers {
 
   val credentials = new BasicAWSCredentials("AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY")
 
+  val securityToken = "AQoDYXdzEPT//////////wEXAMPLEtc764bNrC9SAPBSM22wDOk4x4HIZ8j4FZTwdQWLWsKWHGBuFqwAeMicRXmxfpSPfIeoI" +
+    "YRqTflfKD8YUuwthAx7mSEI/qkPpKPi/kMcGdQrmGdeehM4IC1NtBmUpp2wUE8phUZampKsburEDy0KPkyQDYwT7WZ0wq5VSXDvp75YU9HFvlRd8Tx6" +
+    "q6fE8YQcHNVXAkiY9q6d+xo0rKwT38xVqr7ZD0u0iPPkUL64lIZbqBAz+scqKmlzm8FDrypNC9Yjc8fPOLn9FX9KSYvKTr4rvx3iSIlTJabIQwj2ICCR/oLxBA=="
+
+  val sessionCredentials = new BasicSessionCredentials("AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY", securityToken)
+
   forAll(scenerios) { (scenarioName: String) =>
 
     it should s"build a valid canonical request for $scenarioName" in {
@@ -91,7 +97,7 @@ class RequestSignerSpec extends FlatSpec with Matchers {
 
             val requestHeaders = parseRequest(requestStr).headers
 
-            val signature = RequestSigner.StringSigner.signStringWithS4(
+            val signature = RequestSigner.StringSigner.buildAwsSignature(
               stringToSign = stringToSign.mkString("\n"),
               requestDate = ZonedDateTime.parse("2015-08-30T12:36:00Z[UTC]"),
               credentials = credentials,
@@ -99,7 +105,7 @@ class RequestSignerSpec extends FlatSpec with Matchers {
               region = "us-east-1",
               headers = requestHeaders)
 
-            signature shouldBe expectedSignature.mkString("\n")
+            signature.authorisationSignature shouldBe expectedSignature.mkString("\n")
           }
         }
       }
@@ -110,27 +116,25 @@ class RequestSignerSpec extends FlatSpec with Matchers {
       withFileContents(fileName = s"$filePath.req") { requestStr =>
         withFileContents(fileName = s"$filePath.sreq") { expectedSignedRequest =>
 
-          val requestDate = "2015-08-30T12:36:00Z[UTC]"
-          val request = parseRequest(requestStr)
+          val creds = scenarioName match {
+            case "post-sts-token/post-sts-header-after" => sessionCredentials
+            case _ => credentials
+          }
 
-          val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
+          val requestDate = ZonedDateTime.parse("2015-08-30T12:36:00Z[UTC]")
+          val originalRequest = parseRequest(requestStr)
+          val awsSignature = RequestSigner.sign(originalRequest, requestDate, creds, "us-east-1", "service")
 
-          val stringToSign = RequestSigner.StringToSignBuilder.buildStringToSign(
-            region = "us-east-1",
-            service = "service",
-            canonicalRequest = canonicalRequest,
-            requestDate = ZonedDateTime.parse(requestDate))
+          val expectedRequest = parseRequest(expectedSignedRequest)
+          awsSignature.authorisationSignature shouldBe expectedRequest.headers.find(_.key == "Authorization").get.values.head.trim
+          awsSignature.xAmzDate shouldBe expectedRequest.headers.find(_.key == "X-Amz-Date").get.values.head
 
-          val authHeader = RequestSigner.StringSigner.signStringWithS4(
-            stringToSign = stringToSign,
-            requestDate = ZonedDateTime.parse(requestDate),
-            credentials = credentials,
-            service = "service",
-            region = "us-east-1",
-            headers = request.headers)
+          if(scenarioName == "post-sts-token/post-sts-header-after") {
+            awsSignature.xAmzSecurityToken shouldBe Some(securityToken)
+          } else {
+            awsSignature.xAmzSecurityToken shouldBe None
+          }
 
-          val signedRequest = requestStr.mkString("\n") + s"\nAuthorization: $authHeader"
-          signedRequest shouldBe expectedSignedRequest.mkString("\n")
         }
       }
     }
@@ -157,7 +161,6 @@ class RequestSignerSpec extends FlatSpec with Matchers {
         }
         val queryParams = findQueryParams(queryString.split("\\s", 2).head, Seq.empty)
         val request = Request(headers, body, method, uriWithoutQueryParams, queryParams)
-        println(request)
         request
       }.getOrElse(throw new Exception(s"Cannot parse request: ${requestStr.head}"))
 
