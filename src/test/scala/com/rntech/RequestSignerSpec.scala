@@ -123,13 +123,22 @@ class RequestSignerSpec extends FlatSpec with Matchers {
 
           val requestDate = ZonedDateTime.parse("2015-08-30T12:36:00Z[UTC]")
           val originalRequest = parseRequest(requestStr)
-          val awsSignature = RequestSigner.sign(originalRequest, requestDate, creds, "us-east-1", "service")
+
+          val awsSignature = RequestSigner.sign(
+            uriPath = originalRequest.cleanedUriPath,
+            method = originalRequest.method,
+            body = originalRequest.body,
+            headers = originalRequest.headers.map { case h => (h.key, h.values) },
+            queryParameters = originalRequest.queryParameters.map { case q => (q.name, q.value) },
+            requestDate = requestDate,
+            creds, region = "us-east-1",
+            service = "service")
 
           val expectedRequest = parseRequest(expectedSignedRequest)
           awsSignature.authorisationSignature shouldBe expectedRequest.headers.find(_.key == "Authorization").get.values.head.trim
           awsSignature.xAmzDate shouldBe expectedRequest.headers.find(_.key == "X-Amz-Date").get.values.head
 
-          if(scenarioName == "post-sts-token/post-sts-header-after") {
+          if (scenarioName == "post-sts-token/post-sts-header-after") {
             awsSignature.xAmzSecurityToken shouldBe Some(securityToken)
           } else {
             awsSignature.xAmzSecurityToken shouldBe None
@@ -138,6 +147,21 @@ class RequestSignerSpec extends FlatSpec with Matchers {
         }
       }
     }
+  }
+
+  it should "throw an IllegalArgumentException when the host header is missing" in {
+
+    val filePath = resolveFilePathForScenario("get-vanilla")
+
+    withFileContents(fileName = s"$filePath.req") { requestStr =>
+      val request = parseRequest(requestStr)
+      val withoutHostHeader = request.copy(headers = request.headers.filterNot(_.key == "Host"))
+
+      assertThrows[IllegalArgumentException] {
+        RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(withoutHostHeader)
+      }
+    }
+
   }
 
   def resolveFilePathForScenario(scenario: String) = {

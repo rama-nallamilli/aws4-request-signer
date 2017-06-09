@@ -3,7 +3,7 @@ package com.rntech
 import java.net.{URI, URLEncoder}
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.time.ZonedDateTime
+import java.time.{ZoneId, ZonedDateTime}
 import java.time.format.DateTimeFormatter
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -28,13 +28,26 @@ case class Request(headers: Seq[Header],
 
 object RequestSigner {
 
-  def sign(request: Request, requestDate: ZonedDateTime,
-           credentials: AWSCredentials, region:String, service: String): AWSSignature = {
+
+  def sign(uriPath: String,
+           method: String,
+           body: Option[String],
+           headers: Seq[(String, List[String])],
+           queryParameters: Seq[(String, String)] = Seq.empty[(String, String)],
+           requestDate: ZonedDateTime = ZonedDateTime.now(ZoneId.of("UTC")),
+           credentials: AWSCredentials, region: String, service: String): AWSSignature = {
+
+    val requestHeaders = headers.map {
+      case (header, headerValues) => Header(header, headerValues)
+    }
+
+    val request = Request(requestHeaders, body, method, uriPath, queryParameters.map(a => QueryParam(a._1, a._2)))
+
     val canonicalRequest = RequestSigner.CanonicalRequestBuilder.buildCanonicalRequest(request)
 
     val stringToSign = RequestSigner.StringToSignBuilder.buildStringToSign(
-      region = "us-east-1",
-      service = "service",
+      region = region,
+      service = service,
       canonicalRequest = canonicalRequest,
       requestDate = requestDate)
 
@@ -42,11 +55,10 @@ object RequestSigner {
       stringToSign = stringToSign,
       requestDate = requestDate,
       credentials = credentials,
-      service = "service",
-      region = "us-east-1",
+      service = service,
+      region = region,
       headers = request.headers)
   }
-
 
   val DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
 
@@ -62,7 +74,7 @@ object RequestSigner {
     }
 
     def buildCanonicalRequest(request: Request): String = {
-      if(!request.headers.exists(_.key.toLowerCase == "host"))
+      if (!request.headers.exists(_.key.toLowerCase == "host"))
         throw new IllegalArgumentException(s"Could not build canonical request, 'Host' header required, request=$request")
 
       val canonicalQueryParams = request.queryParameters.sortBy(_.name).map {
