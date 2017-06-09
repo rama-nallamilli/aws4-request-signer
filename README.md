@@ -8,6 +8,8 @@ http://docs.aws.amazon.com/general/latest/gr/signature-version-4.html
 
 ## Usage
 
+WIP - Adding to bintray
+
 ```scala
 import com.rntech.RequestSigner
 
