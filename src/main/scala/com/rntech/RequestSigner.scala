@@ -3,7 +3,7 @@ package com.rntech
 import java.net.{URI, URLEncoder}
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.time.ZonedDateTime
+import java.time.{ZoneId, ZonedDateTime}
 import java.time.format.DateTimeFormatter
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -34,7 +34,7 @@ object RequestSigner {
            body: Option[String],
            headers: Seq[(String, List[String])],
            queryParameters: Seq[(String, String)] = Seq.empty[(String, String)],
-           requestDate: ZonedDateTime,
+           requestDate: ZonedDateTime = ZonedDateTime.now(ZoneId.of("UTC")),
            credentials: AWSCredentials, region: String, service: String): AWSSignature = {
 
     val requestHeaders = headers.map {
