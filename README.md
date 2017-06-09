@@ -9,11 +9,7 @@ http://docs.aws.amazon.com/general/latest/gr/signature-version-4.html
 ## Usage
 
 ```scala
-
 import com.rntech.RequestSigner
-
-val awsAccessKey = "ACCESS_KEY"
-val awsSecretKey = "SECRET_KEY"
 
 val signature = RequestSigner.sign(
     uriPath = "/status",
